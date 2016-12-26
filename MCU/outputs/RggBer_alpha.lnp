@@ -1,0 +1,9 @@
+"..\outputs\main.obj",
+"..\outputs\AF.obj",
+"..\outputs\Dev.obj",
+"..\outputs\EDID.obj",
+"..\outputs\I2C.obj",
+"..\outputs\OV5640.obj",
+"..\outputs\SPI0.obj" 
+TO "..\outputs\RggBer_alpha" 
+PRINT(".\RggBer_alpha.m51") RAMSIZE(256) 

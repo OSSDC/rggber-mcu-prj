@@ -1,0 +1,440 @@
+C51 COMPILER V9.51   MAIN                                                                  12/26/2016 20:53:55 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN ..\outputs\main.obj
+COMPILER INVOKED BY: d:\Keil\C51\BIN\C51.EXE ..\source\main.c BROWSE INCDIR(..\inc) DEBUG OBJECTEXTEND PRINT(.\main.lst)
+                    - TABS(2) OBJECT(..\outputs\main.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          // Includes
+   3          //-----------------------------------------------------------------------------
+   4          
+   5          #include <compiler_defs.h>
+   6          #include <C8051F410_defs.h>                // SFR declarations
+   7          #include <i2c.h>
+   8          #include <SPI0.h>
+   9          #include <Dev.h>
+  10          #include <EDID.h>
+  11          #include <AF.h>
+  12          #include <OV5640.h>
+  13          
+  14          //-----------------------------------------------------------------------------
+  15          // Function PROTOTYPES
+  16          //-----------------------------------------------------------------------------
+  17          
+  18          INTERRUPT_PROTO (UART0_ISR, INTERRUPT_UART0);
+  19          INTERRUPT_PROTO (INT0_ISR, INTERRUPT_INT0);
+  20          INTERRUPT_PROTO (INT1_ISR, INTERRUPT_INT1);
+  21          
+  22          //-----------------------------------------------------------------------------
+  23          // Bit setting
+  24          //-----------------------------------------------------------------------------
+  25          
+  26          SBIT(RF_EN, P2, 3);
+  27          SBIT(RF_RESTORE, P2, 2);
+  28          
+  29          //-----------------------------------------------------------------------------
+  30          // Global Variables
+  31          //-----------------------------------------------------------------------------
+  32          
+  33          #define UART_BUFFERSIZE 16
+  34          U8 xdata UART_Buffer[UART_BUFFERSIZE];
+  35          U8 xdata TX_UART_Buffer[UART_BUFFERSIZE];
+  36          U8 UART_Buffer_Size = 0;
+  37          U8 UART_Input_First = 0;
+  38          U8 UART_Output_First = 0;
+  39          U8 cis_setting = 1;         // 1 : standby, 0 : ready for CIS setting
+  40          U8 new_reply = 1;           // 1 : standby, 0 : sending new reply
+  41          U8 new_cmd = 1;             // 1 : standby, 0 : receiving new cmd, 2 : a complete new cmd is ready for proces
+             -sing
+  42          U8 Byte = 0;
+  43          
+  44          //-----------------------------------------------------------------------------
+  45          
+  46          
+  47          //-----------------------------------------------------------------------------
+  48          // MAIN Routine
+  49          //-----------------------------------------------------------------------------
+  50          //
+  51          void main (void)
+  52          {
+  53   1      
+C51 COMPILER V9.51   MAIN                                                                  12/26/2016 20:53:55 PAGE 2   
+
+  54   1         U8 i;
+  55   1         U16 j;
+  56   1         Init_Device();
+  57   1         RF_EN = 0;
+  58   1         EA = 1;
+  59   1         SPI0_2BYTE_WRITE(0xFF, 0x00); // Refresh SPI bus
+  60   1         while (1)
+  61   1         {       
+  62   2           if(cis_setting == 0)
+  63   2           {
+  64   3             //OV5640 init
+  65   3             for(i = 0; i < 250; i++)
+  66   3             {
+  67   4               I2C_WRITE_OV5640(OV5640_INITI_1920x1080[i][0], OV5640_INITI_1920x1080[i][1]);
+  68   4             }
+  69   3             //OV5640 AF firmware download
+  70   3             I2C_WRITE_OV5640(0x3000, 0x20);
+  71   3             for(j = 0x8000; j < 0x8f5d; j++)
+  72   3             {
+  73   4               I2C_WRITE_OV5640(j, OV5640_AF[j - 0x8000]);
+  74   4             }
+  75   3             I2C_WRITE_OV5640(0x3022, 0x00);
+  76   3             I2C_WRITE_OV5640(0x3023, 0x00);
+  77   3             I2C_WRITE_OV5640(0x3024, 0x00);
+  78   3             I2C_WRITE_OV5640(0x3025, 0x00);
+  79   3             I2C_WRITE_OV5640(0x3026, 0x00);
+  80   3             I2C_WRITE_OV5640(0x3027, 0x00);
+  81   3             I2C_WRITE_OV5640(0x3028, 0x00);
+  82   3             I2C_WRITE_OV5640(0x3029, 0xff);
+  83   3             I2C_WRITE_OV5640(0x3000, 0x00);
+  84   3             I2C_WRITE_OV5640(0x3004, 0xff);
+  85   3             I2C_WRITE_OV5640(0x0000, 0x00);
+  86   3             I2C_WRITE_OV5640(0x0000, 0x00);
+  87   3             I2C_WRITE_OV5640(0x0000, 0x00);
+  88   3             I2C_WRITE_OV5640(0x0000, 0x00);
+  89   3             I2C_WRITE_OV5640(0x0000, 0xff);
+  90   3             //TFP410 init        
+  91   3             I2C_WRITE_TFP410(0x08,0x37);
+  92   3             cis_setting = 1;
+  93   3           }
+  94   2           if( (new_reply == 0) && (UART_Output_First == 0) )
+  95   2           {
+  96   3             TX_UART_Buffer[0] = '(';
+  97   3             TX_UART_Buffer[1] = 'R';
+  98   3             TX_UART_Buffer[2] = 'g';
+  99   3             TX_UART_Buffer[3] = 'g';
+ 100   3             TX_UART_Buffer[4] = 'B';
+ 101   3             TX_UART_Buffer[5] = 'e';
+ 102   3             TX_UART_Buffer[6] = 'r';
+ 103   3             TX_UART_Buffer[7] = ')';
+ 104   3             SBUF0 = TX_UART_Buffer[UART_Output_First];
+ 105   3           }
+ 106   2           if(new_cmd == 2)
+ 107   2           {
+ 108   3             if( (UART_Buffer[1] == 'C') && (UART_Buffer[2] == 'H') && (UART_Buffer[3] == 'K') && (UART_Buffer[4] =
+             -= 'H')
+ 109   3               && (UART_Buffer[5] == 'W') && (UART_Buffer_Size == 6) && (new_reply == 1) )
+ 110   3             {       
+ 111   4               UART_Output_First = 0;
+ 112   4               new_reply = 0;                
+ 113   4             }
+ 114   3           // demo1 AF
+C51 COMPILER V9.51   MAIN                                                                  12/26/2016 20:53:55 PAGE 3   
+
+ 115   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '1') && (UART_Buffer[4] ==
+             - 'A')
+ 116   3               && (UART_Buffer[5] == 'F') && (UART_Buffer_Size == 6) )
+ 117   3             {
+ 118   4               I2C_WRITE_OV5640(0x3022, 0x03);         
+ 119   4             }
+ 120   3           // demo1 Release focus
+ 121   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '1') && (UART_Buffer[4] 
+             -== 'R')
+ 122   3               && (UART_Buffer[5] == 'F') && (UART_Buffer[6] == 'u') && (UART_Buffer_Size == 7) )
+ 123   3             {
+ 124   4               I2C_WRITE_OV5640(0x3022, 0x08);
+ 125   4             }
+ 126   3           //demo2 Negative
+ 127   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '2') && (UART_Buffer[4] 
+             -== 'N')
+ 128   3               && (UART_Buffer[5] == 'e') && (UART_Buffer[6] == 'g') && (UART_Buffer_Size == 7) )
+ 129   3             {
+ 130   4               SPI0_2BYTE_WRITE(0x00, 0x01);
+ 131   4             }
+ 132   3           //demo2 Embossing
+ 133   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '2') && (UART_Buffer[4] 
+             -== 'E')
+ 134   3               && (UART_Buffer[5] == 'm') && (UART_Buffer[6] == 'b') && (UART_Buffer_Size == 7) )
+ 135   3             {
+ 136   4               SPI0_2BYTE_WRITE(0x00, 0x02);
+ 137   4             }
+ 138   3           //demo2 Grayscaler
+ 139   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '2') && (UART_Buffer[4] ==
+             - 'G')
+ 140   3               && (UART_Buffer[5] == 'y') && (UART_Buffer[6] == 's') && (UART_Buffer_Size == 7) )
+ 141   3             {
+ 142   4               SPI0_2BYTE_WRITE(0x00, 0x3);
+ 143   4             }
+ 144   3           //demo2 Wood carving
+ 145   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '2') && (UART_Buffer[4] ==
+             - 'W')
+ 146   3               && (UART_Buffer[5] == 'd') && (UART_Buffer[6] == 'c') && (UART_Buffer_Size == 7) )
+ 147   3             {
+ 148   4               SPI0_2BYTE_WRITE(0x00, 0x04);
+ 149   4             }
+ 150   3           //demo2 4 in 1
+ 151   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '2') && (UART_Buffer[4] ==
+             - '4')
+ 152   3               && (UART_Buffer[5] == 'n') && (UART_Buffer[6] == '1') && (UART_Buffer_Size == 7) )
+ 153   3             {
+ 154   4               SPI0_2BYTE_WRITE(0x00, 0x05);
+ 155   4             }
+ 156   3           //demo2 normal
+ 157   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '2') && (UART_Buffer[4] ==
+             - 'N')
+ 158   3               && (UART_Buffer[5] == 'm') && (UART_Buffer[6] == 'a') && (UART_Buffer_Size == 7) )
+ 159   3             {
+ 160   4               SPI0_2BYTE_WRITE(0x00, 0x00);
+ 161   4             }
+ 162   3           //demo3 Video1
+ 163   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '3') && (UART_Buffer[4] ==
+             - 'V')
+ 164   3               && (UART_Buffer[5] == 'd') && (UART_Buffer[6] == '1') && (UART_Buffer_Size == 7) )
+ 165   3             {
+ 166   4               SPI0_2BYTE_WRITE(0, 0x01);       // 
+ 167   4               SPI0_2BYTE_WRITE(1, 0x00);       // ch0 base 
+C51 COMPILER V9.51   MAIN                                                                  12/26/2016 20:53:55 PAGE 4   
+
+ 168   4               SPI0_2BYTE_WRITE(2, 0x00);       // ch1 base 
+ 169   4               SPI0_2BYTE_WRITE(3, 0xF0);       // ch2 base 
+ 170   4               SPI0_2BYTE_WRITE(5, 0x00);       // ch0 line base h
+ 171   4               SPI0_2BYTE_WRITE(6, 0x00);       // ch0 line base l
+ 172   4               SPI0_2BYTE_WRITE(7, 0x02);       // ch1 line base h
+ 173   4               SPI0_2BYTE_WRITE(8, 0x1C);       // ch1 line base l
+ 174   4               SPI0_2BYTE_WRITE(13, 0x02);      // ch2 line base h
+ 175   4               SPI0_2BYTE_WRITE(14, 0x1C);      // ch2 line base l
+ 176   4               SPI0_2BYTE_WRITE(9, 0x01);       // ch0 width
+ 177   4               SPI0_2BYTE_WRITE(10, 0xE0);      // ch0 width
+ 178   4               SPI0_2BYTE_WRITE(11, 0x00);      // ch1 width
+ 179   4               SPI0_2BYTE_WRITE(12, 0x00);      // ch1 width
+ 180   4               SPI0_2BYTE_WRITE(15, 0x00);      // ch2 width
+ 181   4               SPI0_2BYTE_WRITE(16, 0x00);      // ch2 width
+ 182   4             }
+ 183   3           //demo3 Video2
+ 184   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '3') && (UART_Buffer[4] ==
+             - 'V')
+ 185   3               && (UART_Buffer[5] == 'd') && (UART_Buffer[6] == '2') && (UART_Buffer_Size == 7) )
+ 186   3             {
+ 187   4               SPI0_2BYTE_WRITE(0, 0x01);       // 
+ 188   4               SPI0_2BYTE_WRITE(1, 0x00);       // ch0 base 
+ 189   4               SPI0_2BYTE_WRITE(2, 0x00);       // ch1 base 
+ 190   4               SPI0_2BYTE_WRITE(3, 0xF0);       // ch2 base 
+ 191   4               SPI0_2BYTE_WRITE(5, 0x00);       // ch0 line base h
+ 192   4               SPI0_2BYTE_WRITE(6, 0x00);       // ch0 line base l
+ 193   4               SPI0_2BYTE_WRITE(7, 0x02);       // ch1 line base h
+ 194   4               SPI0_2BYTE_WRITE(8, 0x1C);       // ch1 line base l
+ 195   4               SPI0_2BYTE_WRITE(13, 0x02);      // ch2 line base h
+ 196   4               SPI0_2BYTE_WRITE(14, 0x1C);      // ch2 line base l
+ 197   4               SPI0_2BYTE_WRITE(9, 0x01);       // ch0 width
+ 198   4               SPI0_2BYTE_WRITE(10, 0xE0);      // ch0 width
+ 199   4               SPI0_2BYTE_WRITE(11, 0x00);      // ch1 width
+ 200   4               SPI0_2BYTE_WRITE(12, 0x00);      // ch1 width
+ 201   4               SPI0_2BYTE_WRITE(15, 0x00);      // ch2 width
+ 202   4               SPI0_2BYTE_WRITE(16, 0x00);      // ch2 width
+ 203   4             }
+ 204   3           //demo3 Video3
+ 205   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '3') && (UART_Buffer[4] ==
+             - 'V')
+ 206   3               && (UART_Buffer[5] == 'd') && (UART_Buffer[6] == '3') && (UART_Buffer_Size == 7) )
+ 207   3             {
+ 208   4               SPI0_2BYTE_WRITE(0, 0x01);       // 
+ 209   4               SPI0_2BYTE_WRITE(1, 0x00);       // ch0 base 
+ 210   4               SPI0_2BYTE_WRITE(2, 0x00);       // ch1 base 
+ 211   4               SPI0_2BYTE_WRITE(3, 0xF0);       // ch2 base 
+ 212   4               SPI0_2BYTE_WRITE(5, 0x00);       // ch0 line base h
+ 213   4               SPI0_2BYTE_WRITE(6, 0x00);       // ch0 line base l
+ 214   4               SPI0_2BYTE_WRITE(7, 0x00);       // ch1 line base h
+ 215   4               SPI0_2BYTE_WRITE(8, 0x00);       // ch1 line base l
+ 216   4               SPI0_2BYTE_WRITE(13, 0x02);      // ch2 line base h
+ 217   4               SPI0_2BYTE_WRITE(14, 0x1C);      // ch2 line base l
+ 218   4               SPI0_2BYTE_WRITE(9, 0x00);       // ch0 width
+ 219   4               SPI0_2BYTE_WRITE(10, 0x00);      // ch0 width
+ 220   4               SPI0_2BYTE_WRITE(11, 0x01);      // ch1 width
+ 221   4               SPI0_2BYTE_WRITE(12, 0xE0);      // ch1 width
+ 222   4               SPI0_2BYTE_WRITE(15, 0x00);      // ch2 width
+ 223   4               SPI0_2BYTE_WRITE(16, 0x00);      // ch2 width
+ 224   4             }
+ 225   3           //demo3 Video4
+ 226   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '3') && (UART_Buffer[4] ==
+             - 'V')
+C51 COMPILER V9.51   MAIN                                                                  12/26/2016 20:53:55 PAGE 5   
+
+ 227   3               && (UART_Buffer[5] == 'd') && (UART_Buffer[6] == '4') && (UART_Buffer_Size == 7) )
+ 228   3             {
+ 229   4               SPI0_2BYTE_WRITE(0, 0x01);       // 
+ 230   4               SPI0_2BYTE_WRITE(1, 0x00);       // ch0 base 
+ 231   4               SPI0_2BYTE_WRITE(2, 0x00);       // ch1 base 
+ 232   4               SPI0_2BYTE_WRITE(3, 0x00);       // ch2 base 
+ 233   4               SPI0_2BYTE_WRITE(5, 0x00);       // ch0 line base h
+ 234   4               SPI0_2BYTE_WRITE(6, 0x00);       // ch0 line base l
+ 235   4               SPI0_2BYTE_WRITE(7, 0x02);       // ch1 line base h
+ 236   4               SPI0_2BYTE_WRITE(8, 0x1C);       // ch1 line base l
+ 237   4               SPI0_2BYTE_WRITE(13, 0x00);      // ch2 line base h
+ 238   4               SPI0_2BYTE_WRITE(14, 0x00);      // ch2 line base l
+ 239   4               SPI0_2BYTE_WRITE(9, 0x00);       // ch0 width
+ 240   4               SPI0_2BYTE_WRITE(10, 0x00);      // ch0 width
+ 241   4               SPI0_2BYTE_WRITE(11, 0x00);      // ch1 width
+ 242   4               SPI0_2BYTE_WRITE(12, 0x00);      // ch1 width
+ 243   4               SPI0_2BYTE_WRITE(15, 0x01);      // ch2 width
+ 244   4               SPI0_2BYTE_WRITE(16, 0xE0);      // ch2 width
+ 245   4             }
+ 246   3           //demo3 All Video
+ 247   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '3') && (UART_Buffer[4] ==
+             - 'A')
+ 248   3               && (UART_Buffer[5] == 'L') && (UART_Buffer[6] == 'V') && (UART_Buffer_Size == 7) )
+ 249   3             {
+ 250   4               SPI0_2BYTE_WRITE(0, 0x00);       // 
+ 251   4               SPI0_2BYTE_WRITE(1, 0x00);       // ch0 base 
+ 252   4               SPI0_2BYTE_WRITE(2, 0x00);       // ch1 base 
+ 253   4               SPI0_2BYTE_WRITE(3, 0xF0);       // ch2 base 
+ 254   4               SPI0_2BYTE_WRITE(5, 0x00);       // ch0 line base h
+ 255   4               SPI0_2BYTE_WRITE(6, 0x00);       // ch0 line base l
+ 256   4               SPI0_2BYTE_WRITE(7, 0x02);       // ch1 line base h
+ 257   4               SPI0_2BYTE_WRITE(8, 0x1C);       // ch1 line base l
+ 258   4               SPI0_2BYTE_WRITE(13, 0x02);      // ch2 line base h
+ 259   4               SPI0_2BYTE_WRITE(14, 0x1C);      // ch2 line base l
+ 260   4               SPI0_2BYTE_WRITE(9, 0x01);       // ch0 width
+ 261   4               SPI0_2BYTE_WRITE(10, 0xE0);      // ch0 width
+ 262   4               SPI0_2BYTE_WRITE(11, 0x00);      // ch1 width
+ 263   4               SPI0_2BYTE_WRITE(12, 0xF0);      // ch1 width
+ 264   4               SPI0_2BYTE_WRITE(15, 0x00);      // ch2 width
+ 265   4               SPI0_2BYTE_WRITE(16, 0xF0);      // ch2 width
+ 266   4             }
+ 267   3           //demo4 video1
+ 268   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '4') && (UART_Buffer[4] ==
+             - 'V')
+ 269   3               && (UART_Buffer[5] == 'd') && (UART_Buffer[6] == '1') && (UART_Buffer_Size == 7) )
+ 270   3             {
+ 271   4               SPI0_2BYTE_WRITE(0, 0x00);       
+ 272   4               SPI0_2BYTE_WRITE(1, 0);          
+ 273   4               SPI0_2BYTE_WRITE(5, 0);          
+ 274   4               SPI0_2BYTE_WRITE(6, 0);          
+ 275   4               SPI0_2BYTE_WRITE(9, 0x01);      
+ 276   4               SPI0_2BYTE_WRITE(10, 0xE0);      
+ 277   4               SPI0_2BYTE_WRITE(11, 0x00);       
+ 278   4               SPI0_2BYTE_WRITE(12, 0x00);         
+ 279   4             }
+ 280   3           //demo4 video2
+ 281   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '4') && (UART_Buffer[4] 
+             -== 'V')
+ 282   3               && (UART_Buffer[5] == 'd') && (UART_Buffer[6] == '2') && (UART_Buffer_Size == 7) )
+ 283   3             {
+ 284   4               SPI0_2BYTE_WRITE(0, 0x00);       
+ 285   4               SPI0_2BYTE_WRITE(2, 0);          
+C51 COMPILER V9.51   MAIN                                                                  12/26/2016 20:53:55 PAGE 6   
+
+ 286   4               SPI0_2BYTE_WRITE(7, 0);          
+ 287   4               SPI0_2BYTE_WRITE(8, 0);          
+ 288   4               SPI0_2BYTE_WRITE(11, 0x01);          
+ 289   4               SPI0_2BYTE_WRITE(12, 0xE0);        
+ 290   4               SPI0_2BYTE_WRITE(9, 0x00);        
+ 291   4               SPI0_2BYTE_WRITE(10, 0x00);         
+ 292   4             }
+ 293   3           //demo4 2 videos
+ 294   3           if( (UART_Buffer[1] == 'D') && (UART_Buffer[2] == 'M') && (UART_Buffer[3] == '4') && (UART_Buffer[4] ==
+             - '2')
+ 295   3               && (UART_Buffer[5] == 'V') && (UART_Buffer[6] == 'd') && (UART_Buffer_Size == 7) )
+ 296   3             {
+ 297   4               SPI0_2BYTE_WRITE(0, 0x01);      
+ 298   4               SPI0_2BYTE_WRITE(1, 0);         
+ 299   4               SPI0_2BYTE_WRITE(2, 240);          
+ 300   4               SPI0_2BYTE_WRITE(7, 0);          
+ 301   4               SPI0_2BYTE_WRITE(8, 0);         
+ 302   4               SPI0_2BYTE_WRITE(5, 0);        
+ 303   4               SPI0_2BYTE_WRITE(6, 0);          
+ 304   4               SPI0_2BYTE_WRITE(11, 0);       
+ 305   4               SPI0_2BYTE_WRITE(12, 240);         
+ 306   4               SPI0_2BYTE_WRITE(9, 0);        
+ 307   4               SPI0_2BYTE_WRITE(10, 240);        
+ 308   4             }
+ 309   3           for(i = 0; i < UART_BUFFERSIZE; i++)
+ 310   3           {
+ 311   4             UART_Buffer[i] = 0;
+ 312   4           }
+ 313   3           UART_Buffer_Size = 0;
+ 314   3           new_cmd = 1;    
+ 315   3           }   
+ 316   2         }    
+ 317   1      }
+ 318          
+ 319          //-----------------------------------------------------------------------------
+ 320          // Interrupt Service Routines
+ 321          //-----------------------------------------------------------------------------
+ 322          
+ 323          INTERRUPT(UART0_ISR, INTERRUPT_UART0)
+ 324          {
+ 325   1         if (RI0 == 1)
+ 326   1         {
+ 327   2            RI0 = 0;                         // Clear interrupt flag
+ 328   2            Byte = SBUF0;                    // Read a character from UART
+ 329   2            if( (UART_Buffer_Size == 0) && (new_cmd == 1) && (Byte == '<') )
+ 330   2            {
+ 331   3              UART_Input_First = 0;
+ 332   3              new_cmd = 0;
+ 333   3            }
+ 334   2            if ( (UART_Buffer_Size < UART_BUFFERSIZE) && (new_cmd == 0) )
+ 335   2            {
+ 336   3              UART_Buffer[UART_Input_First] = Byte; // Store in array
+ 337   3              if( UART_Buffer[UART_Input_First] == '>' )
+ 338   3              {
+ 339   4                new_cmd = 2;
+ 340   4              }
+ 341   3              else
+ 342   3              {
+ 343   4                UART_Buffer_Size++;           // Update array's size
+ 344   4                UART_Input_First++;           // Update counter
+ 345   4              }       
+ 346   3            }
+C51 COMPILER V9.51   MAIN                                                                  12/26/2016 20:53:55 PAGE 7   
+
+ 347   2         }
+ 348   1         if (TI0 == 1)                       // Check if transmit flag is set
+ 349   1         {
+ 350   2            TI0 = 0;                         // Clear interrupt flag
+ 351   2            if( TX_UART_Buffer[UART_Output_First] == ')' )
+ 352   2            {
+ 353   3              if( new_reply == 0 )
+ 354   3              {
+ 355   4                UART_Output_First = 0;
+ 356   4                new_reply = 1;
+ 357   4              }       
+ 358   3            }
+ 359   2            else
+ 360   2            {       
+ 361   3              if( new_reply == 0 )
+ 362   3              {
+ 363   4                UART_Output_First++;
+ 364   4                SBUF0 = TX_UART_Buffer[UART_Output_First];
+ 365   4              }                 
+ 366   3            }
+ 367   2         }
+ 368   1      }
+ 369          
+ 370          
+ 371          INTERRUPT(INT1_ISR, INTERRUPT_INT1)
+ 372          {
+ 373   1         SPI0_2BYTE_WRITE(0xFF, 0x00);     // 
+ 374   1      }
+ 375          
+ 376          
+ 377          INTERRUPT(INT0_ISR, INTERRUPT_INT0)
+ 378          {
+ 379   1         cis_setting = 0;
+ 380   1      }
+ 381          
+ 382          
+ 383          
+ 384          //-----------------------------------------------------------------------------
+ 385          // End Of File
+ 386          //-----------------------------------------------------------------------------
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   2142    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     32    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =      7       3
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

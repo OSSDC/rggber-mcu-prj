@@ -1,0 +1,317 @@
+C51 COMPILER V9.51   I2C                                                                   12/26/2016 20:53:57 PAGE 1   
+
+
+C51 COMPILER V9.51, COMPILATION OF MODULE I2C
+OBJECT MODULE PLACED IN ..\outputs\I2C.obj
+COMPILER INVOKED BY: d:\Keil\C51\BIN\C51.EXE ..\lib\I2C.C BROWSE INCDIR(..\inc) DEBUG OBJECTEXTEND PRINT(.\I2C.lst) TABS
+                    -(2) OBJECT(..\outputs\I2C.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          // Includes
+   3          //-----------------------------------------------------------------------------
+   4          
+   5          #include <compiler_defs.h>
+   6          #include <C8051F410_defs.h>                // SFR declarations
+   7          #include <i2c.h>
+   8          
+   9          SBIT (SDA0, SFR_P2, 1);
+  10          SBIT (SCL0, SFR_P2, 0);
+  11          
+  12          bit ack0;
+  13          
+  14          void Start_I2c0()
+  15          {
+  16   1        SDA0=1;   
+  17   1        delay_2us0();
+  18   1        SCL0=1;
+  19   1        delay_2us0();
+  20   1        SDA0=0;   
+  21   1        delay_2us0();
+  22   1        SCL0=0;   
+  23   1        delay_2us0();
+  24   1      }
+  25          
+  26          void Stop_I2c0()
+  27          {
+  28   1        SDA0=0;  
+  29   1        delay_2us0();
+  30   1        SCL0=1;  
+  31   1        delay_2us0();
+  32   1        SDA0=1;  
+  33   1        delay_2us0();
+  34   1      }
+  35          
+  36          void SendByte0(U8 c)
+  37          {
+  38   1        U8 BitCnt;
+  39   1        for(BitCnt=0;BitCnt<8;BitCnt++)  
+  40   1          {
+  41   2          if((c<<BitCnt)&0x80)
+  42   2            SDA0=1;   
+  43   2          else
+  44   2            SDA0=0;
+  45   2          delay_2us0();
+  46   2          SCL0=1;              
+  47   2          delay_2us0();
+  48   2          SCL0=0;
+  49   2          }
+  50   1        delay_2us0();
+  51   1          SDA0=1;               
+  52   1          delay_2us0();
+  53   1          SCL0=1;
+  54   1          delay_2us0();
+C51 COMPILER V9.51   I2C                                                                   12/26/2016 20:53:57 PAGE 2   
+
+  55   1          if(SDA0==1)
+  56   1            ack0=0;
+  57   1          else
+  58   1            ack0=1;        
+  59   1          SCL0=0;
+  60   1          delay_2us0();
+  61   1      }
+  62          
+  63          U8 RcvByte0()
+  64          {
+  65   1        U8 retc;
+  66   1        U8 BitCnt;
+  67   1        retc=0;
+  68   1        SDA0=1;             
+  69   1        for(BitCnt=0;BitCnt<8;BitCnt++)
+  70   1          {
+  71   2          delay_2us0();
+  72   2              SCL0=0;       
+  73   2              delay_2us0();
+  74   2              SCL0=1;      
+  75   2              delay_2us0();
+  76   2              retc=retc<<1;
+  77   2              if(SDA0==1)retc=retc+1; 
+  78   2              delay_2us0();
+  79   2           }
+  80   1        SCL0=0;
+  81   1        delay_2us0();
+  82   1        return(retc);
+  83   1      }
+  84          
+  85          void Ack_I2c0(bit a)
+  86          {
+  87   1      
+  88   1        if(a==0)
+  89   1          SDA0=0;     
+  90   1          else
+  91   1            SDA0=1;
+  92   1        delay_2us0();
+  93   1        SCL0=1;
+  94   1        delay_2us0();
+  95   1        SCL0=0;                
+  96   1        delay_2us0();
+  97   1      }
+  98          
+  99          void delay_2us0()
+ 100          {
+ 101   1        U8 i;
+ 102   1        for(i = 0; i<50; i++);
+ 103   1      }
+ 104          
+ 105          void delay_ms()
+ 106          {
+ 107   1        U16 i;
+ 108   1        for(i = 0; i<0xFFFF; i++);
+ 109   1      }
+ 110          
+ 111          //********************************i2c eeprom**********************************//
+ 112          
+ 113          U8 I2C_READ_EEPROM(U8 suba)
+ 114          {
+ 115   1        U8 rec_data;
+ 116   1        rec_data = 0x00;
+C51 COMPILER V9.51   I2C                                                                   12/26/2016 20:53:57 PAGE 3   
+
+ 117   1        Start_I2c0();
+ 118   1        SendByte0(0xA0);
+ 119   1        SendByte0(suba);
+ 120   1        Start_I2c0();
+ 121   1        SendByte0(0xA1);
+ 122   1        rec_data = RcvByte0();
+ 123   1        Ack_I2c0(1);                 
+ 124   1        Stop_I2c0();                   
+ 125   1        return(rec_data);
+ 126   1      }
+ 127          
+ 128          void I2C_WRITE_EEPROM(U8 suba,U8 dat)
+ 129          {
+ 130   1        Start_I2c0();
+ 131   1        SendByte0(0xA0);
+ 132   1        SendByte0(suba);
+ 133   1        SendByte0(dat);
+ 134   1        Stop_I2c0();
+ 135   1      }
+ 136          
+ 137          //******************************i2c tfp410*************************************//
+ 138          
+ 139          U8 I2C_READ_TFP410(U8 suba)
+ 140          {
+ 141   1        U8 rec_data;
+ 142   1        rec_data = 0x00;
+ 143   1        Start_I2c0();
+ 144   1        SendByte0(0x70);
+ 145   1        SendByte0(suba);
+ 146   1        Start_I2c0();
+ 147   1        SendByte0(0x71);
+ 148   1        rec_data = RcvByte0();
+ 149   1        Ack_I2c0(1);                
+ 150   1        Stop_I2c0();                    
+ 151   1        return(rec_data);
+ 152   1      }
+ 153          
+ 154          void I2C_WRITE_TFP410(U8 suba,U8 dat)
+ 155          {
+ 156   1        Start_I2c0();
+ 157   1        SendByte0(0x70);
+ 158   1        SendByte0(suba);
+ 159   1        SendByte0(dat);
+ 160   1        Stop_I2c0();
+ 161   1      }
+ 162          
+ 163          SBIT (SDA1, SFR_P1, 4);
+ 164          SBIT (SCL1, SFR_P1, 5);
+ 165          
+ 166          bit ack1;
+ 167          
+ 168          void Start_I2c1()
+ 169          {
+ 170   1        SDA1=1;   
+ 171   1        delay_2us1();
+ 172   1        SCL1=1;
+ 173   1        delay_2us1();
+ 174   1        SDA1=0;   
+ 175   1        delay_2us1();
+ 176   1        SCL1=0;   
+ 177   1        delay_2us1();
+ 178   1      }
+C51 COMPILER V9.51   I2C                                                                   12/26/2016 20:53:57 PAGE 4   
+
+ 179          
+ 180          void Stop_I2c1()
+ 181          {
+ 182   1        SDA1=0;  
+ 183   1        delay_2us1();
+ 184   1        SCL1=1; 
+ 185   1        delay_2us1();
+ 186   1        SDA1=1;  
+ 187   1        delay_2us1();
+ 188   1      }
+ 189          
+ 190          void SendByte1(U8 c)
+ 191          {
+ 192   1        U8 BitCnt;
+ 193   1        for(BitCnt=0;BitCnt<8;BitCnt++) 
+ 194   1          {
+ 195   2          if((c<<BitCnt)&0x80)
+ 196   2            SDA1=1;   
+ 197   2          else
+ 198   2            SDA1=0;
+ 199   2          delay_2us1();
+ 200   2          SCL1=1;              
+ 201   2          delay_2us1();
+ 202   2          SCL1=0;
+ 203   2          }
+ 204   1        delay_2us1();
+ 205   1          SDA1=1;              
+ 206   1          delay_2us1();
+ 207   1          SCL1=1;
+ 208   1          delay_2us1();
+ 209   1          if(SDA1==1)
+ 210   1            ack1=0;
+ 211   1          else
+ 212   1            ack1=1;        
+ 213   1          SCL1=0;
+ 214   1          delay_2us1();
+ 215   1      }
+ 216          
+ 217          U8 RcvByte1()
+ 218          {
+ 219   1        U8 retc;
+ 220   1        U8 BitCnt;
+ 221   1        retc=0;
+ 222   1        SDA1=1;          
+ 223   1        for(BitCnt=0;BitCnt<8;BitCnt++)
+ 224   1          {
+ 225   2          delay_2us1();
+ 226   2              SCL1=0;       
+ 227   2              delay_2us1();
+ 228   2              SCL1=1;       
+ 229   2              delay_2us1();
+ 230   2              retc=retc<<1;
+ 231   2              if(SDA1==1)retc=retc+1;
+ 232   2              delay_2us1();
+ 233   2           }
+ 234   1        SCL1=0;
+ 235   1        delay_2us1();
+ 236   1        return(retc);
+ 237   1      }
+ 238          
+ 239          void Ack_I2c1(bit a)
+ 240          {
+C51 COMPILER V9.51   I2C                                                                   12/26/2016 20:53:57 PAGE 5   
+
+ 241   1      
+ 242   1        if(a==0)
+ 243   1          SDA1=0;     
+ 244   1          else
+ 245   1            SDA1=1;
+ 246   1        delay_2us1();
+ 247   1        SCL1=1;
+ 248   1        delay_2us1();
+ 249   1        SCL1=0;                
+ 250   1        delay_2us1();
+ 251   1      }
+ 252          
+ 253          void delay_2us1()
+ 254          {
+ 255   1        U8 i;
+ 256   1        for(i = 0; i<50; i++);
+ 257   1      }
+ 258          
+ 259          //******************************i2c ov5640*************************************//
+ 260          
+ 261          U8 I2C_READ_OV5640(U16 suba)
+ 262          {
+ 263   1        U8 rec_data;
+ 264   1        rec_data = 0x00;
+ 265   1        Start_I2c1();
+ 266   1        SendByte1(0x78);
+ 267   1        SendByte1(suba>>8);
+ 268   1        SendByte1(suba);
+ 269   1        Start_I2c1();
+ 270   1        SendByte1(0x79);
+ 271   1        rec_data = RcvByte1();
+ 272   1        Ack_I2c1(1);
+ 273   1        Stop_I2c1();
+ 274   1        return(rec_data);
+ 275   1      }
+ 276          
+ 277          void I2C_WRITE_OV5640(U16 suba,U8 dat)
+ 278          {
+ 279   1        Start_I2c1();
+ 280   1        SendByte1(0x78);
+ 281   1        SendByte1(suba>>8);
+ 282   1        SendByte1(suba);
+ 283   1        SendByte1(dat);
+ 284   1        Stop_I2c1();
+ 285   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    608    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      22
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2       2
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
